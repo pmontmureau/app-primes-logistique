@@ -51,12 +51,19 @@ def date_premier_du_mois(mois_str):
         pass
     return mois_str
 
-# ==========================================
-# 1. CONNEXION CLOUD ET GESTION DES DONNÉES
-# ==========================================
+# --- 1. CONNEXION CLOUD ET GESTION DES DONNÉES ---
+import json
+
 @st.cache_resource
 def get_google_sheet():
-    gc = gspread.service_account(filename="google_credentials.json")
+    if "gcp_service_account" in st.secrets:
+        # Mode Internet : Lecture depuis le coffre-fort invisible de Streamlit
+        creds_dict = json.loads(st.secrets["gcp_service_account"])
+        gc = gspread.service_account_from_dict(creds_dict)
+    else:
+        # Mode Local : Lecture depuis le fichier sur votre ordinateur
+        gc = gspread.service_account(filename="google_credentials.json")
+        
     sh = gc.open_by_key("1H6hKyRx6gpHA2O_Qs04bL-lbN6NNWqOwx5L49pk-dio")
     return sh
 
