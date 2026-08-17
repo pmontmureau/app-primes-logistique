@@ -242,7 +242,7 @@ df_historique = charger_historique()
 st.sidebar.header("Connexion")
 
 # --- NOUVEAU BOUTON DE RAFRAÎCHISSEMENT ---
-if st.sidebar.button("🔄 Rafraîchir les données (Google Sheets)"):
+if st.sidebar.button("🔄 MAJ données (Google Sheets)"):
     st.cache_data.clear()
     st.success("✅ Données mises à jour !")
     time.sleep(1)
