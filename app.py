@@ -240,7 +240,18 @@ df_hierarchie, df_criteres, df_poids = charger_parametrage()
 df_historique = charger_historique()
 
 st.sidebar.header("Connexion")
+
+# --- NOUVEAU BOUTON DE RAFRAÎCHISSEMENT ---
+if st.sidebar.button("🔄 Rafraîchir les données (Google Sheets)"):
+    st.cache_data.clear()
+    st.success("✅ Données mises à jour !")
+    time.sleep(1)
+    st.rerun()
+# -----------------------------------------
+
 df_managers = df_hierarchie[df_hierarchie['Role Hierarchique'].isin(['N+1', 'N+2'])]
+
+
 utilisateur_actuel = st.sidebar.selectbox("Connecté en tant que :", df_managers['Nom'].tolist())
 infos_user = df_hierarchie[df_hierarchie['Nom'] == utilisateur_actuel].iloc[0]
 
