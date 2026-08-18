@@ -191,10 +191,17 @@ def sauvegarder_saisie(mois, liste_resultats, df_res_complet, df_hierarchie):
             
             df_new_month = pd.DataFrame(nouvelles_lignes)
             df_synth = pd.concat([df_synth, df_new_month], ignore_index=True)
-            df_synth = df_synth.fillna("") # Sécurité pour éviter les crashs de données vides
+            df_synth = df_synth.fillna("") 
             
-            # On écrase et on remplace l'onglet complet
-            ws_synthese.clear()
+            # --- 🌟 NOUVEAU : Tri alphabétique et chronologique ---
+            # On groupe les lignes proprement (par Période, puis par Nom de salarié)
+            df_synth = df_synth.sort_values(by=['Période', 'Salarié'])
+            
+            # --- 🌟 NOUVEAU : Préservation de ton design Google Sheets ---
+            # Au lieu de .clear() qui détruit ton tableau, on efface juste le texte (de la ligne 2 à 2000)
+            ws_synthese.batch_clear(["A2:F2000"])
+            
+            # On réécrit les données triées par-dessus
             ws_synthese.update([df_synth.columns.values.tolist()] + df_synth.values.tolist())
             
             st.cache_data.clear() # Force le rafraîchissement
