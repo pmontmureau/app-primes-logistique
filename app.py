@@ -137,20 +137,46 @@ def charger_historique():
         st.error(f"Erreur de lecture de l'historique : {e}")
         return pd.DataFrame()
 
-def sauvegarder_saisie(mois, nom, liste_resultats):
+def sauvegarder_saisie(mois, nom, liste_resultats, entite, score_coll, score_indiv, score_glob):
     if liste_resultats:
         try:
             sh = get_google_sheet()
-            worksheet_historique = sh.worksheet("Historique_Primes")
             
+            # 1. Sauvegarde détaillée (Historique_Primes)
+            worksheet_historique = sh.worksheet("Historique_Primes")
             lignes_a_inserer = []
             for res in liste_resultats:
                 lignes_a_inserer.append([
                     res['Mois'], res['Nom'], res['Type Score'], res['Groupe'], 
                     res['Poids Groupe'], res['Critere'], res['Poids Critere'], res['Note']
                 ])
-                
             worksheet_historique.append_rows(lignes_a_inserer)
+            
+            # 2. Sauvegarde Cumul (Synthese_Mensuelle) - Création auto si introuvable
+            try:
+                ws_synthese = sh.worksheet("Synthese_Mensuelle")
+            except:
+                ws_synthese = sh.add_worksheet(title="Synthese_Mensuelle", rows="1000", cols="10")
+                ws_synthese.append_row(["Période", "Entité", "Salarié", "Score Collectif (%)", "Score Individuel (%)", "Score Global (%)"])
+            
+            records = ws_synthese.get_all_records()
+            df_synth = pd.DataFrame(records)
+            
+            row_updated = False
+            if not df_synth.empty:
+                # Chercher si la ligne existe déjà pour faire une mise à jour
+                for i, row in df_synth.iterrows():
+                    if str(row.get('Période', '')) == str(mois) and str(row.get('Salarié', '')) == str(nom):
+                        ws_synthese.update_cell(i + 2, 4, round(score_coll, 2))
+                        ws_synthese.update_cell(i + 2, 5, round(score_indiv, 2))
+                        ws_synthese.update_cell(i + 2, 6, round(score_glob, 2))
+                        row_updated = True
+                        break
+            
+            # Si elle n'existe pas, on ajoute une nouvelle ligne
+            if not row_updated:
+                ws_synthese.append_row([mois, entite, nom, round(score_coll, 2), round(score_indiv, 2), round(score_glob, 2)])
+            
             st.cache_data.clear() # Force le rafraîchissement des données Cloud
         except Exception as e:
             st.error(f"Erreur lors de l'enregistrement sur le Cloud : {e}")
@@ -463,7 +489,26 @@ with onglets[1]:
                 elif not confirmation:
                     st.warning("⚠️ Veuillez cocher la case de confirmation pour pouvoir sauvegarder.")
                 else:
-                    sauvegarder_saisie(mois_saisie, collab_choisi, resultats)
+                    # --- Calcul mathématique des scores finaux de la simulation avant sauvegarde ---
+                    df_new_saisies = pd.DataFrame(resultats)
+                    df_hist_clean = df_historique[~((df_historique['Mois'] == mois_saisie) & (df_historique['Nom'] == collab_choisi))]
+                    df_simul = pd.concat([df_hist_clean, df_new_saisies], ignore_index=True)
+                    
+                    df_res_futur = calculer_resultats_mois(mois_saisie, df_simul, df_hierarchie, df_poids)
+                    res_collab_futur = df_res_futur[df_res_futur['Nom'] == collab_choisi].iloc[0]
+                    
+                    s_coll = res_collab_futur['Collectif']
+                    s_indiv = res_collab_futur['Individuel']
+                    s_glob = res_collab_futur['Global']
+                    
+                    # Récupération de l'entité
+                    entite = "Générale"
+                    if 'Entité' in df_hierarchie.columns:
+                        entite = df_hierarchie[df_hierarchie['Nom'] == collab_choisi]['Entité'].iloc[0]
+                        
+                    # Lancement de la sauvegarde enrichie
+                    sauvegarder_saisie(mois_saisie, collab_choisi, resultats, entite, s_coll, s_indiv, s_glob)
+                    
                     st.success(f"✅ Saisie enregistrée en direct sur le Cloud pour {collab_choisi} !")
                     time.sleep(1.5)
                     st.rerun()
