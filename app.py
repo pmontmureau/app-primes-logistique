@@ -318,7 +318,7 @@ mois_saisie = f"{mois_saisie_nom} {annee_saisie}"
 annee_filtre = annee_saisie
 
 # --- CORPS DE LA PAGE ---
-onglets = st.tabs(["📊 Tableau de Bord Annuel", "✍️ Saisie des Primes"])
+onglets = st.tabs(["📊 Tableau de Bord Annuel", "✍️ Saisie des Primes", "🎓 Bilan Annuel (Entretiens)"])
 
 # ------------------------------------------
 # ONGLET 1 : TABLEAU DE BORD
@@ -529,3 +529,88 @@ with onglets[1]:
                     st.success(f"✅ Saisie enregistrée et scores synchronisés pour {collab_choisi} !")
                     time.sleep(1.5)
                     st.rerun()
+
+# ------------------------------------------
+# ONGLET 3 : BILAN ANNUEL (ENTRETIENS)
+# ------------------------------------------
+with onglets[2]:
+    st.markdown("## 🎓 Préparation aux Entretiens Annuels")
+    st.write("Cet espace génère un rapport de performance individuel, idéal pour appuyer factuellement l'évaluation annuelle obligatoire.")
+    
+    # On vérifie que les données annuelles ont bien été chargées dans l'onglet 1
+    if 'df_all_res' not in locals() or df_all_res.empty:
+        st.info("Aucune donnée disponible pour générer un bilan.")
+    else:
+        # On filtre les données sur l'année sélectionnée dans le menu de gauche
+        df_annee_bilan = df_all_res[df_all_res['Mois'].str.contains(str(annee_filtre))].copy()
+        
+        if df_annee_bilan.empty:
+            st.warning(f"Aucune donnée saisie pour l'année {annee_filtre}.")
+        else:
+            st.markdown("---")
+            col_sel1, col_sel2 = st.columns([1, 2])
+            
+            # Liste déroulante pour choisir le salarié (triée par ordre alphabétique)
+            liste_salaries = sorted(df_annee_bilan['Nom'].unique())
+            collaborateur_bilan = col_sel1.selectbox("Sélectionner le collaborateur à évaluer :", liste_salaries, key="select_bilan")
+            
+            df_collab = df_annee_bilan[df_annee_bilan['Nom'] == collaborateur_bilan].copy()
+            
+            # --- 1. CALCUL DES KPIs GLOBAUX ---
+            moyenne_globale = df_collab['Global'].mean()
+            meilleur_score = df_collab['Global'].max()
+            meilleur_mois = df_collab.loc[df_collab['Global'].idxmax()]['Mois']
+            
+            kpi1, kpi2, kpi3 = st.columns(3)
+            kpi1.metric("🎯 Moyenne Annuelle", f"{moyenne_globale:.1f} %")
+            kpi2.metric("🏆 Meilleur Mois", meilleur_mois, f"{meilleur_score:.1f} %")
+            kpi3.metric("📅 Mois évalués", f"{len(df_collab)} mois")
+            
+            st.markdown("---")
+            
+            # --- 2. GRAPHIQUE PRO (ÉVOLUTION MENSUELLE) ---
+            import plotly.graph_objects as go
+            
+            fig_bilan = go.Figure()
+            
+            # Ajout des barres pour chaque mois
+            fig_bilan.add_trace(go.Bar(
+                x=df_collab['Mois'],
+                y=df_collab['Global'],
+                name="Score Global",
+                marker_color='#1f77b4',
+                text=df_collab['Global'].apply(lambda x: f"{x:.1f}%"),
+                textposition='auto',
+                hovertemplate="<b>%{x}</b><br>Score Global: %{y:.1f}%<extra></extra>"
+            ))
+            
+            # Ajout d'une ligne pointillée rouge pour symboliser la moyenne
+            fig_bilan.add_hline(
+                y=moyenne_globale, 
+                line_dash="dot", 
+                line_color="red", 
+                annotation_text=f"Moyenne : {moyenne_globale:.1f}%", 
+                annotation_position="top right"
+            )
+            
+            # Design et lisibilité du graphique
+            fig_bilan.update_layout(
+                title=f"📈 Évolution de la performance de {collaborateur_bilan} ({annee_filtre})",
+                yaxis_title="Score Global obtenu (%)",
+                yaxis=dict(range=[0, max(105, meilleur_score + 10)]),
+                template="plotly_white",
+                margin=dict(t=50, b=20, l=0, r=0)
+            )
+            
+            st.plotly_chart(fig_bilan, use_container_width=True)
+            
+            # --- 3. TABLEAU DÉTAILLÉ DE L'ANNÉE ---
+            with st.expander("🔍 Afficher le détail des scores (Collectif / Individuel)"):
+                df_affichage_bilan = df_collab[['Mois', 'Collectif', 'Individuel', 'Global']].copy()
+                df_affichage_bilan.columns = ['Période', 'Score Collectif', 'Score Individuel', 'Score Global']
+                
+                # Formatage en pourcentages esthétiques
+                for col in ['Score Collectif', 'Score Individuel', 'Score Global']:
+                    df_affichage_bilan[col] = df_affichage_bilan[col].apply(lambda x: f"{x:.1f} %")
+                
+                st.dataframe(df_affichage_bilan, use_container_width=True, hide_index=True)
