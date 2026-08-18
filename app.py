@@ -130,8 +130,8 @@ def charger_historique():
             df['Poids Critere'] = df['Poids Critere'].astype(str).str.replace('%', '').str.replace(',', '.').str.strip()
             df['Poids Critere'] = pd.to_numeric(df['Poids Critere'], errors='coerce').fillna(0)
         
-        # On ne garde que la dernière saisie si un manager a corrigé une prime
-        df = df.drop_duplicates(subset=['Mois', 'Nom', 'Critere'], keep='last')
+        # On ne garde que la dernière saisie si un manager a corrigé une prime (Prise en compte des homonymes)
+        df = df.drop_duplicates(subset=['Mois', 'Nom', 'Type Score', 'Groupe', 'Critere'], keep='last')
         return df
     except Exception as e:
         st.error(f"Erreur de lecture de l'historique : {e}")
@@ -440,9 +440,9 @@ with onglets[1]:
         </div>
         """, unsafe_allow_html=True)
         
-        def obtenir_valeur_par_defaut(critere):
+        def obtenir_valeur_par_defaut(type_score, groupe, critere):
             if not df_deja_saisi.empty:
-                ligne = df_deja_saisi[df_deja_saisi['Critere'] == critere]
+                ligne = df_deja_saisi[(df_deja_saisi['Type Score'] == type_score) & (df_deja_saisi['Groupe'] == groupe) & (df_deja_saisi['Critere'] == critere)]
                 if not ligne.empty:
                     return int(ligne['Note'].iloc[0])
             return None
@@ -483,7 +483,7 @@ with onglets[1]:
                         
                         with st.expander(titre_expander, expanded=tout_developper):
                             for _, row in criteres_groupe.iterrows():
-                                val_defaut = obtenir_valeur_par_defaut(row['Critere'])
+                                val_defaut = obtenir_valeur_par_defaut(type_score, grp, row['Critere'])
                                 cle_unique = f"{type_score}_{mois_saisie}_{collab_choisi}_{row['Critere']}"
                                 label_critere = formater_label(row['Critere'], row['Poids Critere'])
                                 
