@@ -137,7 +137,7 @@ def charger_historique():
         st.error(f"Erreur de lecture de l'historique : {e}")
         return pd.DataFrame()
 
-def sauvegarder_saisie(mois, nom, liste_resultats, entite, score_coll, score_indiv, score_glob):
+def sauvegarder_saisie(mois, liste_resultats, df_res_complet, df_hierarchie):
     if liste_resultats:
         try:
             sh = get_google_sheet()
@@ -152,7 +152,7 @@ def sauvegarder_saisie(mois, nom, liste_resultats, entite, score_coll, score_ind
                 ])
             worksheet_historique.append_rows(lignes_a_inserer)
             
-            # 2. Sauvegarde Cumul (Synthese_Mensuelle) - Création auto si introuvable
+            # 2. Sauvegarde Cumul avec SYNCHRONISATION TOTALE (Synthese_Mensuelle)
             try:
                 ws_synthese = sh.worksheet("Synthese_Mensuelle")
             except:
@@ -162,22 +162,42 @@ def sauvegarder_saisie(mois, nom, liste_resultats, entite, score_coll, score_ind
             records = ws_synthese.get_all_records()
             df_synth = pd.DataFrame(records)
             
-            row_updated = False
+            # On isole la simulation mathématique complète de ce mois
+            df_mois_update = df_res_complet.dropna(subset=['Global']).copy()
+            
             if not df_synth.empty:
-                # Chercher si la ligne existe déjà pour faire une mise à jour
-                for i, row in df_synth.iterrows():
-                    if str(row.get('Période', '')) == str(mois) and str(row.get('Salarié', '')) == str(nom):
-                        ws_synthese.update_cell(i + 2, 4, round(score_coll, 2))
-                        ws_synthese.update_cell(i + 2, 5, round(score_indiv, 2))
-                        ws_synthese.update_cell(i + 2, 6, round(score_glob, 2))
-                        row_updated = True
-                        break
+                # On nettoie toutes les anciennes lignes de ce mois précis dans le Sheet
+                df_synth = df_synth[df_synth['Période'] != mois] 
+            else:
+                df_synth = pd.DataFrame(columns=["Période", "Entité", "Salarié", "Score Collectif (%)", "Score Individuel (%)", "Score Global (%)"])
             
-            # Si elle n'existe pas, on ajoute une nouvelle ligne
-            if not row_updated:
-                ws_synthese.append_row([mois, entite, nom, round(score_coll, 2), round(score_indiv, 2), round(score_glob, 2)])
+            # On reconstruit les lignes du mois avec les scores recalculés pour TOUT le monde
+            nouvelles_lignes = []
+            for _, row in df_mois_update.iterrows():
+                entite = "Générale"
+                if 'Entité' in df_hierarchie.columns:
+                    match = df_hierarchie[df_hierarchie['Nom'] == row['Nom']]['Entité']
+                    if not match.empty:
+                        entite = match.iloc[0]
+                        
+                nouvelles_lignes.append({
+                    "Période": mois,
+                    "Entité": entite,
+                    "Salarié": row['Nom'],
+                    "Score Collectif (%)": round(row['Collectif'], 2),
+                    "Score Individuel (%)": round(row['Individuel'], 2),
+                    "Score Global (%)": round(row['Global'], 2)
+                })
             
-            st.cache_data.clear() # Force le rafraîchissement des données Cloud
+            df_new_month = pd.DataFrame(nouvelles_lignes)
+            df_synth = pd.concat([df_synth, df_new_month], ignore_index=True)
+            df_synth = df_synth.fillna("") # Sécurité pour éviter les crashs de données vides
+            
+            # On écrase et on remplace l'onglet complet
+            ws_synthese.clear()
+            ws_synthese.update([df_synth.columns.values.tolist()] + df_synth.values.tolist())
+            
+            st.cache_data.clear() # Force le rafraîchissement
         except Exception as e:
             st.error(f"Erreur lors de l'enregistrement sur le Cloud : {e}")
 
@@ -489,26 +509,16 @@ with onglets[1]:
                 elif not confirmation:
                     st.warning("⚠️ Veuillez cocher la case de confirmation pour pouvoir sauvegarder.")
                 else:
-                    # --- Calcul mathématique des scores finaux de la simulation avant sauvegarde ---
+                    # --- Calcul mathématique total du mois ---
                     df_new_saisies = pd.DataFrame(resultats)
                     df_hist_clean = df_historique[~((df_historique['Mois'] == mois_saisie) & (df_historique['Nom'] == collab_choisi))]
                     df_simul = pd.concat([df_hist_clean, df_new_saisies], ignore_index=True)
                     
                     df_res_futur = calculer_resultats_mois(mois_saisie, df_simul, df_hierarchie, df_poids)
-                    res_collab_futur = df_res_futur[df_res_futur['Nom'] == collab_choisi].iloc[0]
                     
-                    s_coll = res_collab_futur['Collectif']
-                    s_indiv = res_collab_futur['Individuel']
-                    s_glob = res_collab_futur['Global']
+                    # On envoie toute la matrice du mois à la sauvegarde
+                    sauvegarder_saisie(mois_saisie, resultats, df_res_futur, df_hierarchie)
                     
-                    # Récupération de l'entité
-                    entite = "Générale"
-                    if 'Entité' in df_hierarchie.columns:
-                        entite = df_hierarchie[df_hierarchie['Nom'] == collab_choisi]['Entité'].iloc[0]
-                        
-                    # Lancement de la sauvegarde enrichie
-                    sauvegarder_saisie(mois_saisie, collab_choisi, resultats, entite, s_coll, s_indiv, s_glob)
-                    
-                    st.success(f"✅ Saisie enregistrée en direct sur le Cloud pour {collab_choisi} !")
+                    st.success(f"✅ Saisie enregistrée et scores synchronisés pour {collab_choisi} !")
                     time.sleep(1.5)
                     st.rerun()
