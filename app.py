@@ -525,75 +525,86 @@ with onglets[2]:
             st.markdown("---")
             col_sel1, col_sel2 = st.columns([1, 2])
             
-            liste_salaries = sorted(df_annee_bilan['Nom'].unique())
-            collaborateur_bilan = col_sel1.selectbox("Sélectionner le collaborateur à évaluer :", liste_salaries, key="select_bilan")
-            
-            df_collab = df_annee_bilan[df_annee_bilan['Nom'] == collaborateur_bilan].copy()
-            
-            # --- 1. CALCUL DES KPIs GLOBAUX ---
-            moyenne_globale = df_collab['Global'].mean()
-            meilleur_score = df_collab['Global'].max()
-            meilleur_mois = df_collab.loc[df_collab['Global'].idxmax()]['Mois']
-            
-            kpi1, kpi2, kpi3 = st.columns(3)
-            kpi1.metric("🎯 Moyenne Annuelle", f"{moyenne_globale:.1f} %")
-            kpi2.metric("🏆 Meilleur Mois", meilleur_mois, f"{meilleur_score:.1f} %")
-            kpi3.metric("📅 Mois évalués", f"{len(df_collab)} mois")
-            
-            st.markdown("---")
-            
-            # --- 2. GRAPHIQUE ÉVOLUTION MENSUELLE ---
-            import plotly.graph_objects as go
-            fig_bilan = go.Figure()
-            fig_bilan.add_trace(go.Bar(
-                x=df_collab['Mois'], y=df_collab['Global'],
-                name="Score Global", marker_color='#1f77b4',
-                text=df_collab['Global'].apply(lambda x: f"{x:.1f}%"),
-                textposition='auto'
-            ))
-            fig_bilan.add_hline(
-                y=moyenne_globale, line_dash="dot", line_color="red", 
-                annotation_text=f"Moyenne : {moyenne_globale:.1f}%", annotation_position="top right"
-            )
-            fig_bilan.update_layout(
-                title=f"📈 Évolution de la performance de {collaborateur_bilan} ({annee_filtre})",
-                yaxis_title="Score Global obtenu (%)",
-                yaxis=dict(range=[0, max(105, meilleur_score + 10)]),
-                template="plotly_white", margin=dict(t=50, b=20, l=0, r=0)
-            )
-            st.plotly_chart(fig_bilan, use_container_width=True)
-            
-            st.markdown("---")
-            
-            # --- 3. DÉTAIL COMPLET POUR L'ENTRETIEN ---
-            st.markdown("### 📋 Détail par critère (Moyenne Annuelle)")
-            st.write("Analyse détaillée de chaque item pour identifier les axes d'amélioration.")
-            
-            df_hist_collab = df_historique[(df_historique['Nom'] == collaborateur_bilan) & (df_historique['Mois'].str.contains(str(annee_filtre)))].copy()
-            
-            if not df_hist_collab.empty:
-                # Calcul de la moyenne annuelle par item exact
-                df_criteres_annuel = df_hist_collab.groupby(['Type Score', 'Groupe', 'Critere'])['Note'].mean().reset_index()
-                df_criteres_annuel['Note'] = df_criteres_annuel['Note'].round(1)
-                
-                col_det1, col_det2 = st.columns(2)
-                
-                with col_det1:
-                    st.markdown("#### 🤝 Part Collective")
-                    df_coll = df_criteres_annuel[df_criteres_annuel['Type Score'] == 'Collectif'][['Groupe', 'Critere', 'Note']]
-                    if not df_coll.empty:
-                        df_coll.columns = ['Groupe', 'Critère évalué', 'Note Moyenne (/100)']
-                        st.dataframe(df_coll, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Aucun détail collectif trouvé.")
-                        
-                with col_det2:
-                    st.markdown("#### 👤 Part Individuelle")
-                    df_indiv = df_criteres_annuel[df_criteres_annuel['Type Score'] == 'Individuel'][['Groupe', 'Critere', 'Note']]
-                    if not df_indiv.empty:
-                        df_indiv.columns = ['Groupe', 'Critère évalué', 'Note Moyenne (/100)']
-                        st.dataframe(df_indiv, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("Aucun détail individuel trouvé.")
+            # --- 🔒 CORRECTION : FILTRE DE CONFIDENTIALITÉ ---
+            if infos_user['Role Hierarchique'] == "N+2":
+                equipe_autorisee = df_hierarchie[(df_hierarchie['Role Hierarchique'] == 'N+1') | (df_hierarchie['Manager'] == utilisateur_actuel)]['Nom'].tolist()
             else:
-                st.warning("Le détail des critères n'est pas disponible pour cette période.")
+                equipe_autorisee = df_hierarchie[df_hierarchie['Manager'] == utilisateur_actuel]['Nom'].tolist()
+                
+            # On croise l'équipe du manager avec les données existantes de l'année
+            liste_salaries = sorted([nom for nom in df_annee_bilan['Nom'].unique() if nom in equipe_autorisee])
+            
+            if not liste_salaries:
+                st.warning("Aucun membre de votre équipe n'a de bilan disponible pour cette année.")
+            else:
+                collaborateur_bilan = col_sel1.selectbox("Sélectionner le collaborateur à évaluer :", liste_salaries, key="select_bilan")
+                
+                df_collab = df_annee_bilan[df_annee_bilan['Nom'] == collaborateur_bilan].copy()
+                
+                # --- 1. CALCUL DES KPIs GLOBAUX ---
+                moyenne_globale = df_collab['Global'].mean()
+                meilleur_score = df_collab['Global'].max()
+                meilleur_mois = df_collab.loc[df_collab['Global'].idxmax()]['Mois']
+                
+                kpi1, kpi2, kpi3 = st.columns(3)
+                kpi1.metric("🎯 Moyenne Annuelle", f"{moyenne_globale:.1f} %")
+                kpi2.metric("🏆 Meilleur Mois", meilleur_mois, f"{meilleur_score:.1f} %")
+                kpi3.metric("📅 Mois évalués", f"{len(df_collab)} mois")
+                
+                st.markdown("---")
+                
+                # --- 2. GRAPHIQUE ÉVOLUTION MENSUELLE ---
+                import plotly.graph_objects as go
+                fig_bilan = go.Figure()
+                fig_bilan.add_trace(go.Bar(
+                    x=df_collab['Mois'], y=df_collab['Global'],
+                    name="Score Global", marker_color='#1f77b4',
+                    text=df_collab['Global'].apply(lambda x: f"{x:.1f}%"),
+                    textposition='auto'
+                ))
+                fig_bilan.add_hline(
+                    y=moyenne_globale, line_dash="dot", line_color="red", 
+                    annotation_text=f"Moyenne : {moyenne_globale:.1f}%", annotation_position="top right"
+                )
+                fig_bilan.update_layout(
+                    title=f"📈 Évolution de la performance de {collaborateur_bilan} ({annee_filtre})",
+                    yaxis_title="Score Global obtenu (%)",
+                    yaxis=dict(range=[0, max(105, meilleur_score + 10)]),
+                    template="plotly_white", margin=dict(t=50, b=20, l=0, r=0)
+                )
+                st.plotly_chart(fig_bilan, use_container_width=True)
+                
+                st.markdown("---")
+                
+                # --- 3. DÉTAIL COMPLET POUR L'ENTRETIEN ---
+                st.markdown("### 📋 Détail par critère (Moyenne Annuelle)")
+                st.write("Analyse détaillée de chaque item pour identifier les axes d'amélioration.")
+                
+                df_hist_collab = df_historique[(df_historique['Nom'] == collaborateur_bilan) & (df_historique['Mois'].str.contains(str(annee_filtre)))].copy()
+                
+                if not df_hist_collab.empty:
+                    # Calcul de la moyenne annuelle par item exact
+                    df_criteres_annuel = df_hist_collab.groupby(['Type Score', 'Groupe', 'Critere'])['Note'].mean().reset_index()
+                    df_criteres_annuel['Note'] = df_criteres_annuel['Note'].round(1)
+                    
+                    col_det1, col_det2 = st.columns(2)
+                    
+                    with col_det1:
+                        st.markdown("#### 🤝 Part Collective")
+                        df_coll = df_criteres_annuel[df_criteres_annuel['Type Score'] == 'Collectif'][['Groupe', 'Critere', 'Note']]
+                        if not df_coll.empty:
+                            df_coll.columns = ['Groupe', 'Critère évalué', 'Note Moyenne (/100)']
+                            st.dataframe(df_coll, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Aucun détail collectif trouvé.")
+                            
+                    with col_det2:
+                        st.markdown("#### 👤 Part Individuelle")
+                        df_indiv = df_criteres_annuel[df_criteres_annuel['Type Score'] == 'Individuel'][['Groupe', 'Critere', 'Note']]
+                        if not df_indiv.empty:
+                            df_indiv.columns = ['Groupe', 'Critère évalué', 'Note Moyenne (/100)']
+                            st.dataframe(df_indiv, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Aucun détail individuel trouvé.")
+                else:
+                    st.warning("Le détail des critères n'est pas disponible pour cette période.")
