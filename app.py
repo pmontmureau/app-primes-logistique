@@ -383,30 +383,7 @@ with onglets[0]:
             
             collab_list_graph = [c for c in equipe if c in df_all_res['Nom'].values]
 
-        if len(collab_list_graph) > 0:
-            st.write("---")
-            st.subheader("📈 Analyse Détaillée par Collaborateur")
-            collab_graph = st.selectbox("Sélectionner un collaborateur :", collab_list_graph)
-            
-            if collab_graph:
-                col1, col2 = st.columns(2)
-                with col1:
-                    df_graph_global = df_annee[df_annee['Nom'] == collab_graph]
-                    if not df_graph_global.empty:
-                        fig1 = px.line(df_graph_global, x='Mois', y='Global', title=f"Évolution du Score Global", markers=True, text='Global', category_orders={'Mois': colonnes_mois_annee})
-                        fig1.update_traces(textposition="top center", texttemplate='%{text:.1f}%')
-                        fig1.update_yaxes(range=[0, max(100, df_graph_global['Global'].max() + 5)])
-                        st.plotly_chart(fig1, use_container_width=True)
-                    
-                with col2:
-                    df_hist_collab = df_historique[(df_historique['Nom'] == collab_graph) & (df_historique['Mois'].str.contains(str(annee_filtre)))].copy()
-                    if not df_hist_collab.empty:
-                        df_hist_collab['Score Partiel'] = pd.to_numeric(df_hist_collab['Note']) * (pd.to_numeric(df_hist_collab['Poids Critere']) / 100)
-                        df_groupes_graph = df_hist_collab.groupby(['Mois', 'Groupe'])['Score Partiel'].sum().reset_index()
-                        
-                        fig2 = px.line(df_groupes_graph, x='Mois', y='Score Partiel', color='Groupe', markers=True, title=f"Évolution des Sous-groupes", category_orders={'Mois': colonnes_mois_annee})
-                        fig2.update_yaxes(range=[0, max(100, df_groupes_graph['Score Partiel'].max() + 5)])
-                        st.plotly_chart(fig2, use_container_width=True)
+        
 
 # ------------------------------------------
 # ONGLET 2 : SAISIE DES PRIMES
@@ -535,13 +512,11 @@ with onglets[1]:
 # ------------------------------------------
 with onglets[2]:
     st.markdown("## 🎓 Préparation aux Entretiens Annuels")
-    st.write("Cet espace génère un rapport de performance individuel, idéal pour appuyer factuellement l'évaluation annuelle obligatoire.")
+    st.write("Cet espace génère un rapport de performance individuel détaillé, idéal pour appuyer factuellement l'évaluation annuelle et fixer des objectifs.")
     
-    # On vérifie que les données annuelles ont bien été chargées dans l'onglet 1
     if 'df_all_res' not in locals() or df_all_res.empty:
         st.info("Aucune donnée disponible pour générer un bilan.")
     else:
-        # On filtre les données sur l'année sélectionnée dans le menu de gauche
         df_annee_bilan = df_all_res[df_all_res['Mois'].str.contains(str(annee_filtre))].copy()
         
         if df_annee_bilan.empty:
@@ -550,7 +525,6 @@ with onglets[2]:
             st.markdown("---")
             col_sel1, col_sel2 = st.columns([1, 2])
             
-            # Liste déroulante pour choisir le salarié (triée par ordre alphabétique)
             liste_salaries = sorted(df_annee_bilan['Nom'].unique())
             collaborateur_bilan = col_sel1.selectbox("Sélectionner le collaborateur à évaluer :", liste_salaries, key="select_bilan")
             
@@ -568,49 +542,58 @@ with onglets[2]:
             
             st.markdown("---")
             
-            # --- 2. GRAPHIQUE PRO (ÉVOLUTION MENSUELLE) ---
+            # --- 2. GRAPHIQUE ÉVOLUTION MENSUELLE ---
             import plotly.graph_objects as go
-            
             fig_bilan = go.Figure()
-            
-            # Ajout des barres pour chaque mois
             fig_bilan.add_trace(go.Bar(
-                x=df_collab['Mois'],
-                y=df_collab['Global'],
-                name="Score Global",
-                marker_color='#1f77b4',
+                x=df_collab['Mois'], y=df_collab['Global'],
+                name="Score Global", marker_color='#1f77b4',
                 text=df_collab['Global'].apply(lambda x: f"{x:.1f}%"),
-                textposition='auto',
-                hovertemplate="<b>%{x}</b><br>Score Global: %{y:.1f}%<extra></extra>"
+                textposition='auto'
             ))
-            
-            # Ajout d'une ligne pointillée rouge pour symboliser la moyenne
             fig_bilan.add_hline(
-                y=moyenne_globale, 
-                line_dash="dot", 
-                line_color="red", 
-                annotation_text=f"Moyenne : {moyenne_globale:.1f}%", 
-                annotation_position="top right"
+                y=moyenne_globale, line_dash="dot", line_color="red", 
+                annotation_text=f"Moyenne : {moyenne_globale:.1f}%", annotation_position="top right"
             )
-            
-            # Design et lisibilité du graphique
             fig_bilan.update_layout(
                 title=f"📈 Évolution de la performance de {collaborateur_bilan} ({annee_filtre})",
                 yaxis_title="Score Global obtenu (%)",
                 yaxis=dict(range=[0, max(105, meilleur_score + 10)]),
-                template="plotly_white",
-                margin=dict(t=50, b=20, l=0, r=0)
+                template="plotly_white", margin=dict(t=50, b=20, l=0, r=0)
             )
-            
             st.plotly_chart(fig_bilan, use_container_width=True)
             
-            # --- 3. TABLEAU DÉTAILLÉ DE L'ANNÉE ---
-            with st.expander("🔍 Afficher le détail des scores (Collectif / Individuel)"):
-                df_affichage_bilan = df_collab[['Mois', 'Collectif', 'Individuel', 'Global']].copy()
-                df_affichage_bilan.columns = ['Période', 'Score Collectif', 'Score Individuel', 'Score Global']
+            st.markdown("---")
+            
+            # --- 3. DÉTAIL COMPLET POUR L'ENTRETIEN ---
+            st.markdown("### 📋 Détail par critère (Moyenne Annuelle)")
+            st.write("Analyse détaillée de chaque item pour identifier les axes d'amélioration.")
+            
+            df_hist_collab = df_historique[(df_historique['Nom'] == collaborateur_bilan) & (df_historique['Mois'].str.contains(str(annee_filtre)))].copy()
+            
+            if not df_hist_collab.empty:
+                # Calcul de la moyenne annuelle par item exact
+                df_criteres_annuel = df_hist_collab.groupby(['Type Score', 'Groupe', 'Critere'])['Note'].mean().reset_index()
+                df_criteres_annuel['Note'] = df_criteres_annuel['Note'].round(1)
                 
-                # Formatage en pourcentages esthétiques
-                for col in ['Score Collectif', 'Score Individuel', 'Score Global']:
-                    df_affichage_bilan[col] = df_affichage_bilan[col].apply(lambda x: f"{x:.1f} %")
+                col_det1, col_det2 = st.columns(2)
                 
-                st.dataframe(df_affichage_bilan, use_container_width=True, hide_index=True)
+                with col_det1:
+                    st.markdown("#### 🤝 Part Collective")
+                    df_coll = df_criteres_annuel[df_criteres_annuel['Type Score'] == 'Collectif'][['Groupe', 'Critere', 'Note']]
+                    if not df_coll.empty:
+                        df_coll.columns = ['Groupe', 'Critère évalué', 'Note Moyenne (/100)']
+                        st.dataframe(df_coll, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Aucun détail collectif trouvé.")
+                        
+                with col_det2:
+                    st.markdown("#### 👤 Part Individuelle")
+                    df_indiv = df_criteres_annuel[df_criteres_annuel['Type Score'] == 'Individuel'][['Groupe', 'Critere', 'Note']]
+                    if not df_indiv.empty:
+                        df_indiv.columns = ['Groupe', 'Critère évalué', 'Note Moyenne (/100)']
+                        st.dataframe(df_indiv, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("Aucun détail individuel trouvé.")
+            else:
+                st.warning("Le détail des critères n'est pas disponible pour cette période.")
